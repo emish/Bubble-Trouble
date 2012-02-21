@@ -1,0 +1,87 @@
+Notes for Bubble Trouble in OAT
+
+---------------------
+   Task List 
+---------------------
+* = doing now
+** = partial
+*** = done
+
+   **0. Bubble physics: Make bubble bounce. Trajectory changes by incrementing y 1 more than before each time. x always
+      incremented by 1.
+   
+   *1. Collision detection: 
+      ***1a. Add collision detection for entire harpoon rope, not just tip. This can be done by 
+   incorporating the sizey of the harpoon. 
+      **1b. Incorporate the whole bubble size into collision detection, some clever way of approximating
+   the circular shape, instead of using a bounding box. Might just do bounding box for simplicity.
+   (checking if the character is not empty)
+       		- ***Collision with walls
+		- ***Collision with harpoon
+       ***1c. Split big bubbles into small bubbles until smallest, then just pop.
+       **1d. Collision detection between bubble and guy.   
+
+   **2. Add stage and scene decorations/components: 
+      - Walls
+      - Ceiling
+      - Floor
+      - Lives counter
+      - Stage 
+      - Maybe add walls n shit for newer stages, this is complex.
+      - Title screen
+
+   **3. How to incorporate different "stages" ? Perhaps just randomly choose a new bubble size, or add an additional 
+      number of bubbles. 
+      Describe 'level' as follows: 
+      	       - num_small_bubbles: 
+	       - num_med_bubbles: 
+	       - num_big_bubbles:
+	       - num_biggest_bubbles:
+      So, every time a stage completes: 
+      	  num_med_bubbles = num_med_bubbles + 1 % 4
+	  if (num_med_bubbles == 0) 
+	     num_big_bubbles = num_big_bubbles + 1 % 3
+      	  if (num_med_bubbles == 0 & num_big_bubbles == 0) 
+	     num_biggest_bubbles = num_biggest_bubbles + 1 % 2 
+
+
+	     Just use bubble trouble from online as example. Grid out
+	     some basic points on the stage using the border and x,y
+	     distances.
+	     Use those to place bubbles. 
+
+    ***4. Create character bitmap. 
+    	   *** - left and right movement animation 
+    
+    5. Incorporate power-ups.
+       a. Can fire multiple harpoons for limited time.
+       b. Can fire lasers
+       c. Increased movement speed
+       d. Extra life
+       
+   6. Animations: 
+      - ***Character moving right and left
+      - Bubbles popping (add extra frame, create new bitmap for "pop")
+      - Character death/collision. Add circular frame, and color out rest of stage for effect. 
+
+   7. Game State: 
+      - **Loss of life.
+      - **Restarting level.
+      - **Progression of levels.
+      - ***Updating time/lives. 
+
+----------------------------------
+   Random notes and bugs: 
+----------------------------------
+
+might want to add border dimensions to all game-objects, not just the stage. 
+
+guy goes off edges. **FIXED**
+
+harpoon overshoots barrier because we added the guy's height to draw. **FIXED**
+
+bubbles overshoot the floor because the dy makes them increment y by more than 1, so collision isn't detected until
+after they have surpassed the y-value of the floor. Fix this by checkin during the addition, if the result will be greater than the 
+floor y value, then just set the y to be the y floor value instead. **FIXED**
+
+Bubbles go off the stage if hit near a wall.

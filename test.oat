@@ -1,0 +1,13 @@
+#include "console.oat"
+#include "list.oat"
+#include "math.oat"
+
+int program(int argc, string[] argv){
+    con_init();
+    while (true) {
+        int k = 0;
+        k = con_getch();
+        con_print("nyan\n");
+    }
+    return 0;
+}

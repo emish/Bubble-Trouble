@@ -1,0 +1,719 @@
+#include "console.oat"
+#include "list.oat"
+#include "math.oat"
+
+unit debug_print(string msg) {
+  int k = 0;
+  con_clear();
+  con_print(msg);
+  while (k == 0) {
+    k = con_getch();
+  }
+  con_refresh();
+  return;
+}
+
+/* Global game elements and settings */
+/* Dimensions of the playing field. So objects can bounce back */ 
+int max_x = 120;
+int max_y = 35;
+int max_y_real = 37; /* The dimension of the whole stage including text area: (max_y + 2) */
+
+/* All elements in a game are of this type. All elements 
+ * have coordinates on screen */
+class GameObject <: Object {
+  int x;  
+  int y; 
+  /* Constructor */
+  new (int x, int y)() 
+  {
+    this.x = x;
+    this.y = y;
+  }
+  
+  /* initialization code */
+  unit init() { return; }
+
+  /* overloaded in subclasses */
+  unit draw() { return; }
+};
+
+
+/* A DelayedObject moves on the screen with time. It 
+ * is animated */
+class DelayedObject <: GameObject {
+  int delay;
+  int current_delay;
+
+  new(int x, int y)(x,y) {
+    this.delay = 5; /* The default delay for any object */
+  }
+
+  /* called after each delay */
+  int move() { return 1; }
+
+  int update() {
+    int keep = 1;
+    this.current_delay = this.current_delay + 1;
+    if (this.current_delay >= this.delay) {
+      /* time to do the update */
+
+      keep = this.move();
+      
+      /* reset the clock */
+      this.current_delay = 0;
+    }
+    return keep;
+  }
+  
+};
+
+
+/********************* BUBBLE OBJECT ************************/
+class Bubble <: DelayedObject {
+  int dirx; /* -1 = left, 0 = immobile, 1 = right */
+  int diry; /* -1 = down, 0 = immobile, 1 = up */
+  int bubblesize; /* The ball size out of 4 */
+  int sizex;  /* dimensions of the bubble */
+  int sizey;
+  int dy; /* acceleration in y direction */
+  int dy_max; /* What the acceleration max is for this ball size */
+  int color; /* Color of the bubble */
+  string[] pic;    /* pic[frame][i] represents line i of frame frame */
+
+  /* int frames; /* for drawing */
+  /* int current_frame; */
+  
+  new (int x, int y, int bubblesize, int dirx, int diry)(x,y)
+    this.pic = new [9](fun i -> ""); /* here need different sized arrays for different size balloons*/ 
+  {
+    this.dirx = dirx;
+    this.diry = diry;
+    this.bubblesize = bubblesize;
+    /* this.frames = 1; Gonna add one for popping animation, will need to manually call from blowup()*/
+    /* this.current_frame = 1;*/
+    this.delay = 3;  /* Do we actually need this since 5 is passed to the superclass ctor? */
+    this.current_delay = 0; /* Might want to put this in the delayed object ctor */
+    this.dy = 1;
+  }
+
+  /* need a way to keep track of x and y size for each ballsize
+   * need some fancy collision detection */
+  unit init () {
+    if (this.bubblesize == 1) {
+      this.sizey = 2;
+      this.sizex = 4;
+      this.dy_max = 3;
+      
+      this.pic[0] = " /\"\"\\ ";
+      this.pic[1] = " \\__/ ";
+      this.pic[2] = "";
+      this.pic[3] = "";
+      this.pic[4] = "";
+      this.pic[5] = "";
+      this.pic[6] = "";
+      this.pic[7] = "";
+      this.pic[8] = "";
+    }
+    else if (this.bubblesize == 2) {
+      this.sizey = 4;
+      this.sizex = 7;
+      this.dy_max = 4;
+      this.pic[0] = "   __   ";
+      this.pic[1] = " /    \\ ";
+      this.pic[2] = "|      |";
+      this.pic[3] = " \\ __ / ";
+      this.pic[4] = "";
+      this.pic[5] = "";
+      this.pic[6] = "";
+      this.pic[7] = "";
+      this.pic[8] = "";
+    }
+    else if (this.bubblesize == 3) {
+      this.sizey = 6;
+      this.sizex = 13;
+      this.dy_max = 5;
+      this.pic[0] = "     _____     ";
+      this.pic[1] = "  .'       `.   ";
+      this.pic[2] = " /           \\  ";
+      this.pic[3] = " |           |  ";
+      this.pic[4] = " \\           /  ";
+      this.pic[5] = "  `. _____ .'   ";
+      this.pic[6] = "";
+      this.pic[7] = "";
+      this.pic[8] = "";
+    }
+    else if (this.bubblesize == 4) {
+      this.sizey = 9;
+      this.sizex = 18;
+      this.dy_max = 6;
+      this.pic[0] = "     _.-\"\"\"\"-._     ";
+      this.pic[1] = "   .'          `.   ";
+      this.pic[2] = "  /              \\  ";
+      this.pic[3] = " |                | ";
+      this.pic[4] = " |                | ";
+      this.pic[5] = " |                | ";
+      this.pic[6] = "  \\              /  ";
+      this.pic[7] = "   `._        _.'   ";
+      this.pic[8] = "      `-....-'      ";
+    }
+    return;
+      
+}
+
+  unit change_x_direction() {
+    this.dirx = 0 - this.dirx;
+    return;
+  }
+
+  unit change_y_direction() {
+    this.diry = 0 - this.diry;
+    return;
+  }
+
+  unit blowup() {return;}
+
+  unit hit_wall() {
+    /* reverse x coord, change directions */
+    this.change_x_direction();
+    return;
+  }
+
+  unit hit_floor() {
+    this.change_y_direction();
+    return;
+  }
+
+  int move() {
+    /* update the current frame */
+    /* this.current_frame = oat_mod (this.current_frame + 1, this.frames);*/
+    int border_x = (con_width() - max_x) >> 1;
+    int border_y = (con_height() - max_y) >> 1;
+    int collide_x_left = border_x;
+    int collide_x_right = con_width() - border_x;
+    int collide_y_bot = con_height() - border_y;
+    /* x movement */
+    if (this.dirx == -1) {
+      /* moving left */
+      if (this.x == collide_x_left) 
+	this.hit_wall(); 
+      else 
+	this.x = this.x - 1;
+    }
+    else if (this.dirx == 1) {
+      /* Moving right */
+      if ((this.x + this.sizex + 1) >= collide_x_right) 
+	this.hit_wall(); 
+      else 
+	this.x = this.x + 1;
+    }
+    /* y movement */
+    if (this.diry == -1) {
+      /* moving down */
+      if (this.y  == collide_y_bot - this.sizey) {
+	this.hit_floor();
+	this.dy = this.dy_max;
+	this.y = this.y - this.dy;
+	this.dy = this.dy - 1;
+      }
+      else {
+	int temp_y = this.y + this.dy;
+	if (temp_y >= collide_y_bot - this.sizey)
+	  temp_y = collide_y_bot - this.sizey;
+	this.y = temp_y;
+	this.dy = this.dy + 1;
+      }
+    }
+    else if (this.diry == 1) {
+      this.y = this.y - this.dy;
+      this.dy = this.dy - 1;
+    }
+    if (this.dy == 0) 
+      this.change_y_direction();
+    return 1;
+  }
+
+  unit draw() {
+    for (int j = 0; j < this.sizey; j = j+1;) {
+      con_move(this.x, this.y + j);
+      con_print(this.pic[j]);
+      con_move(0,0);
+    }
+    return;
+  }
+};
+
+
+/***************** HARPOON *******************/
+class Harpoon <: DelayedObject {
+  int dir;   /* -1 = up, +1 = down */
+  int sizey; /* How long the harpoon has extended */
+  string[] pic;
+
+  List bubbles;  /* for collision detection */
+
+  new (int x, int y, List bubbles)(x,y) 
+    this.pic = new [max_y](fun i -> "");
+    this.bubbles = bubbles;
+  {
+    this.dir = -1;    /* start moving up */
+    this.delay = 1;
+    this.sizey = 3;   /* because guy has height */
+  }
+
+  unit init() {
+    this.pic[0] = "^";
+    this.pic[1] = "|";
+    for (int i = 3; i < max_y; i = i+2;) {
+      this.pic[i] = "(";
+    }
+    for (int i = 2; i < max_y; i = i+2;) {
+      this.pic[i] = ")";
+    }
+    return;
+  }
+
+  int collision() {
+    int keep = 1;
+    ListItem? cursor = this.bubbles.head;
+    while (cursor != null) {
+      if?( ListItem item = cursor) {
+        if?( Object o = item.obj ) {
+          cast (Bubble b = o) {
+	    for (int i = 0; i < this.sizey; i=i+1;) {
+	      if ((b.x <= this.x) &
+		  (this.x <= b.x + b.sizex) &
+		  (b.y <= this.y + i) &
+		  (this.y + i <= b.y + b.sizey)) {
+		int x = b.x;
+		int y = b.y;
+		int new_size = 0;
+		b.blowup();
+		this.bubbles.remove(item);
+		/* This is where we split bubbles */
+		if (b.bubblesize == 2) 
+		  new_size = 1;
+		else if (b.bubblesize == 3)
+		  new_size = 2;
+		else if (b.bubblesize == 4)
+		  new_size = 3;
+
+		if (new_size > 0) {
+		  Bubble b1 = new Bubble(x+1, y-2, new_size, 1, 1);
+		  Bubble b2 = new Bubble(x-1, y-2, new_size, -1, 1);
+		  b1.init();
+		  b2.init();
+		  this.bubbles.insert(b1);
+		  this.bubbles.insert(b2);
+		  
+		}
+		  keep = 0;
+		  i = this.sizey;
+	      }
+	    }
+          }
+        }
+        cursor = item.next;
+      }
+    }
+    return keep;
+  }
+
+  int move () {
+    int keep = 1;
+    if (this.dir < 0) {
+      int border_y = (con_height() - max_y)  >> 1;
+      if (this.y == (border_y + 3 + 3)) keep = 0; else this.y = this.y - 1;
+    }
+    else keep = 1;
+    if (keep==1) {
+      if (this.sizey < max_y) {
+	this.sizey = this.sizey + 1;
+      }
+      keep = this.collision();
+    }
+    return keep;
+  }
+
+  unit draw() {
+    for (int j = 0; j < this.sizey; j = j+1;) { 
+      con_move(this.x, this.y + j - 3);
+      con_print(this.pic[j]);
+      con_move(0,0);
+    }
+    return;
+  }
+
+};
+
+
+/*************** GUY OBJECT ***************/
+class Guy <: GameObject {
+  string[][] pic;
+  int lives;
+  int width;
+  int height;
+  int frames;
+  int current_frame;
+
+  new (int lives)(con_width() >> 1, (con_height() - ((con_height() - max_y) >> 1)) - 1)
+    this.pic = new [2](fun i -> new [4](fun i -> ""));
+    this.frames = 2;
+  {
+    this.height = 4;
+    this.width = 4;
+    this.lives = lives;
+    this.current_frame = 1;
+  }
+
+  unit init() {
+    this.pic[0][0] = " ,,,";
+    this.pic[0][1] = " oo'";
+    this.pic[0][2] = ".||.";
+    this.pic[0][3] = " dd ";
+    this.pic[1][0] = " ```";
+    this.pic[1][1] = " 'oo";
+    this.pic[1][2] = " .||.";
+    this.pic[1][3] = "  dd ";
+    return;
+  }
+
+  unit move_left() {
+    int border_x = (con_width() - max_x) >> 1;
+    if (this.x > border_x + 1) 
+      this.x = this.x - 1;
+    this.current_frame = 0;
+    return;
+  }
+
+  unit move_right() {
+    int border_x = (con_width() - max_x) >> 1;
+    if ((this.x + this.width) < con_width() - border_x - 1 ) 
+      this.x = this.x + 1;
+    this.current_frame = 1;
+    return;
+  }
+
+  unit draw() {
+    for (int j = 0; j < this.height; j = j+1;) {
+      con_move(this.x, this.y + j - this.height + 1);
+      if (j == 0) {
+	con_attrset(con_color(3));
+      }
+      else if (j == 2) {
+	con_attrset(con_color(1));
+      }
+      else if (j == 3) {
+	con_attrset(con_color(0));
+      }
+      con_print(this.pic[this.current_frame][j]);
+      con_move(0,0);
+      con_attrset(con_color(0));
+    }
+    return;
+  }
+
+  Harpoon fire_harpoon(List bubbles) {
+    return new Harpoon(this.x+1, this.y+1, bubbles);
+  }
+};
+
+unit update_list(List l) {
+    /* update the game objects */
+    ListItem? cursor = l.head;
+    while (cursor != null) {
+      if?( ListItem item = cursor) {
+        if?( Object o = item.obj ) {
+          cast (DelayedObject dobj = o) {
+            int keep = dobj.update();
+            if (!keep) l.remove(item);
+          }
+        }
+        cursor = item.next;
+      }
+    }
+    return;
+  }
+
+
+unit draw_list(List l) {
+    /* update the game objects */
+    ListItem? cursor = l.head;
+    while (cursor != null) {
+      if?( ListItem item = cursor) {
+        if?( Object o = item.obj ) {
+          cast (DelayedObject dobj = o) {
+            dobj.draw();
+          }
+        }
+        cursor = item.next;
+      }
+    }
+    return;
+  }
+
+
+/******************** STAGE OBJECT *****************/
+class Stage <: GameObject {
+  int width; /* the width of the playing field */
+  int height; /* the height of the playing field */
+  int title_x; /* the location of the title text */
+  int title_y;
+  int level;
+  int time;
+  int lives;
+  int score;
+  string game_title;
+  
+  new ()(0,0)
+    this.game_title = "Bubble Trouble!";
+    this.level = 1;
+  {
+    this.width = max_x;
+    this.height = max_y; 
+    /* locate the extrema points for the stage border */
+    this.title_x = max_x >> 2 - 7;
+  }
+
+  /* Initializes the stage.
+   * Level initializers should be abstracted out */
+  unit init() {
+    this.lives = 5;
+    this.time = 20;
+    this.score = 0;
+    return;
+  }
+
+  /* Draws the whole stage */
+  /* Right now this is hard-coded; how best to represent a stage? */
+  unit draw() {
+    int score_offset = max_y_real - max_y;
+    /* the distance of the border from the console border */
+    int border_x = oat_div((con_width() - this.width), 2);
+    int border_y = oat_div((con_height() - this.height), 2);
+    /* Draw the top and bottom borders and the score border */
+    for (int i = border_x + 1; i < (con_width() - border_x); i = i+1;) {
+      /* ceiling */
+      con_move(i, border_y);
+      con_print("-");
+      /* floor */
+      con_move(i, (con_height() - border_y));
+      con_print("-");
+      /* score border */
+      con_move(i, border_y + score_offset);
+      con_print("-");
+    }
+
+    /* Draw the left and right borders */
+    for (int i = border_y; i < (con_height() - border_y) + 1; i = i+1;) {
+      con_move(border_x, i);
+      con_print("|");
+      con_move((con_width() - border_x), i);
+      con_print("|");
+    }
+    
+    /* Health bar */
+    con_move(border_x + 2, border_y + 3);
+    con_print("HEALTH: ");
+    for (int i = border_x + 10; i < border_x + 20; i = i+1;){
+      con_move(i, border_y+3);
+      con_print("*");
+    }
+
+    /* Points bar */
+    con_move(border_x + 2, border_y + 4);
+    con_print("POINTS: ");
+    con_move(border_x + 10, border_y + 4);
+    con_print("0");
+
+    /* Level bar */
+    con_move(con_width() - border_x - 10, border_y + 3);
+    con_print("Level: ");
+    con_move(con_width() - border_x - 7, border_y + 3);
+    con_print(level);
+    
+    con_move(0,0);
+    /* con_attrset(con_color(0)); */
+
+    con_move(0,0);
+    return;
+  }
+};
+
+/******************** GAME STATE ********************/
+class State <: Object {
+  Guy guy;
+  Stage stage;
+
+  /* A list of DelayedObjects - Bubbles*/
+  List bubbles;
+  List harpoons;
+
+  /* The descriptors of a level */
+  int num_small_bubbles;
+  int num_med_bubbles;
+  int num_big_bubbles;
+  int num_biggest_bubbles;
+
+  new ()()
+  this.bubbles = new List();
+  this.harpoons = new List();
+  this.guy = new Guy(10);
+  this.stage = new Stage();
+  {
+    this.num_small_bubbles = 0;
+    this.num_med_bubbles = 0;
+    this.num_big_bubbles = 0;
+    this.num_biggest_bubbles = 0;
+  }
+  
+  /* Creates a new bubble in game, tracks them in list
+   * input: position and size */
+  unit create_bubble(int x, int y, int bubblesize) {
+    Bubble b = new Bubble(x, y, bubblesize, -1, 1); /* creating at direction left */
+    b.init();
+    this.bubbles.insert(b);
+    return;
+  }
+  
+  /* initializes the game state, currently implies entire restart */
+  unit init() {
+    int border_y = (con_height() - max_y) >> 1;
+    int pos_start = oat_div(max_y, 3) + border_y;
+    this.guy.init();
+    this.create_bubble((con_width() >> 1), pos_start, 3);
+    this.num_big_bubbles = 1;
+    return;
+  }
+
+  unit stage_refresh() {
+    return;
+  }
+
+  /* Updates the state that a harpoon has been fired */
+  unit fire_harpoon() {
+    if (this.harpoons.is_empty()) {
+      Harpoon b = this.guy.fire_harpoon(this.bubbles);
+      b.init();
+      this.harpoons.insert(b);
+    }
+    return;
+  }
+
+  /* update the game state using keyboard input k
+  * might want collision detection here instead */
+  unit update(int k) {
+    /* update the guy */
+    if (k == 106)
+      this.guy.move_left();
+    if (k == 108)
+      this.guy.move_right();
+    if (k == 32) {
+      this.fire_harpoon();
+    }
+    if (this.bubbles.is_empty()) {
+      /* does nothing */
+    }
+    update_list(this.bubbles);
+    update_list(this.harpoons);
+    return;
+  }
+
+  /* Redraws the scene. Contains all game elements to call draw methods */
+  unit display() {
+    con_clear();  
+    /* draw the bubbles n harpoons */
+    draw_list(this.bubbles);
+    draw_list(this.harpoons);
+    /* draw guy */
+    this.guy.draw();
+    /* draw the stage */
+    this.stage.draw();
+
+    con_refresh();
+    return;
+  }
+};
+
+/* con colors 
+ * 1 - red
+ * 2 - green 
+ * 3 - yellow
+ * 4 - blue
+ * 5 - purple
+ * 6 - pink
+ * 7 - lighter blue
+ * 8 - 
+ * 0 - white/black (main).
+ */
+
+unit instructions() {
+  int k = 0;
+  int color = 0;
+  con_clear();
+  con_move(50, (con_height() >> 1) - 10);
+  con_attrset(con_color(1));
+  con_print("
+888888b.            888      888      888          
+888  \"88b           888      888      888          
+888  .88P           888      888      888          
+8888888K.  888  888 88888b.  88888b.  888  .d88b.  
+888  \"Y88b 888  888 888 \"88b 888 \"88b 888 d8P  Y8b 
+888    888 888  888 888  888 888  888 888 88888888 
+888   d88P Y88b 888 888 d88P 888 d88P 888 Y8b.     
+8888888P\"   \"Y88888 88888P\"  88888P\"  888  \"Y8888  
+                                                   
+                                                   
+                                                   
+88888888888                       888      888          
+    888                           888      888          
+    888                           888      888          
+    888  888d888 .d88b.  888  888 88888b.  888  .d88b.  
+    888  888P\"  d88\"\"88b 888  888 888 \"88b 888 d8P  Y8b 
+    888  888    888  888 888  888 888  888 888 88888888 
+    888  888    Y88..88P Y88b 888 888 d88P 888 Y8b.     
+    888  888     \"Y88P\"   \"Y88888 88888P\"  888  \"Y8888  
+
+    \\  j - Move left \n
+    \\  l - Move right \n
+    \\  space - Fire \n
+    \\  Esc - quit \n\n
+    \\  [Press enter key to begin]\n");
+  con_move(0,0);
+  con_attrset(con_color(0));
+  con_refresh();
+  while (k != 13) {
+    k = con_getch();
+  }
+  return;
+}
+
+unit lose() {
+  return;
+}
+
+int program(int argc, string[] argv){
+  int minx = 80;
+  int miny = 25;
+  con_init();
+  instructions();
+  if ((con_width() >= minx) & (con_height() >= miny)) {
+    State state = new State();
+    int lost = 0;
+    int k = 0;
+    int something = 0;
+    state.init();
+    something = con_halfdelay(1);
+    while ((k != 27) & !lost) {
+      state.display();
+      k = con_getch();
+      state.update(k);
+    }
+    lose();
+  } 
+  else {
+    print_string("Minimum size of the console is 80x25! \n");
+  }
+  con_cleanup();
+  return 0;
+}
